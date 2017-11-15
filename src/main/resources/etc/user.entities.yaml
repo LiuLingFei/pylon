@@ -1,0 +1,89 @@
+entities:
+            
+    wechat:
+        name:
+            dataType: STRING
+        appId:
+            dataType: STRING
+        secret:
+            dataType: STRING
+        token:
+            dataType: STRING
+        accessToken:
+            dataType: STRING
+        tokenExpires:
+            dataType: DATETIME
+        aeskey:
+            dataType: STRING
+        jsapiTicket:
+            dataType: STRING
+        ticketExpires:
+            dataType: DATETIME
+        mchId:
+            dataType: STRING
+        mchKey:
+            dataType: STRING
+
+    user:
+        nickname:
+            dataType: STRING
+        age:
+            dataType: INT
+        lastTouched:
+            dataType: LONG
+        attr:
+            fieldType: SINGLE_REFERENCE
+            targetMetaEntity: userAttr
+        status:
+            dataType: INT
+            displayName: 状态
+            required: 1
+            valueOption:
+              - 正常
+              - 删除
+              - 禁用
+
+    passport:
+        number:
+            dataType: STRING
+        issuePlace:
+            dataType: STRING
+        
+    userAttr:
+        height:
+            dataType: INT
+            comment: 身高
+        
+        passport:
+            fieldType: SINGLE_REFERENCE
+            targetMetaEntity: passport
+        
+
+    party:
+        name:
+            dataType: STRING
+            defaultValue: 默认party
+
+    item:
+        name:
+            dataType: STRING
+        itemProps:
+            fieldType: MULTI_REFERENCE
+            targetMetaEntity: itemProp
+        relatedItems:
+            fieldType: MULTI_REFERENCE
+            targetMetaEntity: item
+
+    itemProp:
+        name:
+            dataType: STRING
+            
+
+        
+        
+        
+        
+        
+
+    
+    

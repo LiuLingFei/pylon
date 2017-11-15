@@ -33,6 +33,16 @@ public class WebUtil {
     @Value("${ssl:}")
     private String ssl;
 
+    @Value("${defaultCookiePath:}")
+    private String cookiePath ;
+
+    public String getDefaultCookiePath(){
+        if(StringUtils.isEmpty(cookiePath)){
+            return "/" ;
+        }
+        return cookiePath ;
+    }
+
     public String getThemeTpl(String prefix, String theme, String file) {
         String s = prefix + "/theme/" + theme + "/" + file;
 
@@ -162,9 +172,18 @@ public class WebUtil {
             url = "http://" + url;
         }
 
+        url = replaceSharpToSharp(url);
 
+        return url;
+    }
 
-
+    /**
+     * 这是一个workaround
+     * @param url
+     * @return
+     */
+    private String replaceSharpToSharp(String url){
+        url = url.replace("_sharp_", "#");
         return url;
     }
 
@@ -274,7 +293,7 @@ public class WebUtil {
 
     public void seedCookie(HttpServletResponse response, String name, String value) {
         Cookie c = new Cookie(name, value);
-        c.setPath("/");
+        c.setPath(this.getDefaultCookiePath());
         c.setMaxAge(Integer.MAX_VALUE);
         response.addCookie(c);
     }
@@ -291,4 +310,34 @@ public class WebUtil {
         
         return "";
     }
+
+    public Map<String, Object> getRetMap(){
+        return getRetMap(0, "") ;
+    }
+
+    public Map<String, Object> getRetMap(int errorCode, String errorMsg) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("errorCode", errorCode);
+        m.put("errorMsg", errorMsg);
+
+        Map<String, Object> rm = new HashMap<>();
+        m.put("data", rm);
+
+        return m;
+    }
+
+    public String getIpAddr(HttpServletRequest request) {
+        String ip = request.getHeader("x-forwarded-for");
+        if(ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("Proxy-Client-IP");
+        }
+        if(ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if(ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        return ip;
+    }
+
 }

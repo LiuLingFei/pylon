@@ -12,7 +12,6 @@ import com.yotouch.base.util.WebUtil;
 import com.yotouch.core.runtime.DbSession;
 import com.yotouch.core.runtime.YotouchApplication;
 import com.yotouch.base.service.AttachmentService;
-import com.yotouch.base.service.WechatManager;
 import com.yotouch.base.util.PropUtil;
 import com.yotouch.core.entity.Entity;
 import org.springframework.util.StringUtils;
@@ -32,9 +31,6 @@ public abstract class BaseController {
     protected PropUtil propUtil;
 
     @Autowired
-    protected WechatManager wechatMgr;
-
-    @Autowired
     protected AttachmentService attService;
 
 
@@ -49,10 +45,6 @@ public abstract class BaseController {
         DbSession dbSession = this.getDbSession();
 
         Entity loginUser = (Entity) request.getAttribute(Consts.RUNTIME_VARIABLE_USER);
-        if (loginUser == null) {
-            loginUser = (Entity) request.getAttribute("loginUser");
-        }
-        //logger.info("Create dbSession with LoginUser " + loginUser);
         dbSession.setLoginUser(loginUser);
         return dbSession;
     }

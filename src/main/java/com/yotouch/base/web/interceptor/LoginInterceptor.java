@@ -4,11 +4,13 @@ import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import com.yotouch.base.util.WebUtil;
 import com.yotouch.core.Consts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.ModelAndView;
@@ -34,6 +36,9 @@ public abstract class LoginInterceptor implements HandlerInterceptor {
 
     private List<String> ignoredList;
 
+    @Autowired
+    private WebUtil webUtil ;
+
     public LoginInterceptor() {
         this(new ArrayList<>());
     }
@@ -58,8 +63,6 @@ public abstract class LoginInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws Exception {
-
-        String uri = request.getRequestURI();
         boolean isLogin = false;
 
         Cookie[] cookies = request.getCookies();
@@ -71,24 +74,22 @@ public abstract class LoginInterceptor implements HandlerInterceptor {
 
                     Entity user = userService.checkLoginUser(userToken);
                     if (user != null) {
-                        request.setAttribute("loginUser", user);
                         request.setAttribute(Consts.RUNTIME_VARIABLE_USER, user);
 
                         // TODO add role menu
                         isLogin = true;
                     } else {
                         Cookie cookie = new Cookie("userToken", "");
-                        cookie.setPath("/");
+                        cookie.setPath(webUtil.getDefaultCookiePath()) ;
                         response.addCookie(cookie);
                     }
                 }
             }
         }
 
-        for (String iu: this.ignoredList) {
-            if (uri.startsWith(iu)) {
-                isLogin = true;
-            }
+        boolean isIgnore = this.uriIsIgnore(request) ;
+        if(isIgnore){
+            isLogin = true ;
         }
 
         if (isLogin) {
@@ -96,6 +97,24 @@ public abstract class LoginInterceptor implements HandlerInterceptor {
         } else {
             return this.loginFailed(request, response, handler);
         }
+    }
+
+    /**
+     * 检测当前 URI 是否不需要权限控制
+     *
+     * @param request
+     * @return
+     */
+    protected boolean uriIsIgnore(HttpServletRequest request){
+        String uri = request.getRequestURI();
+
+        for (String iu: this.ignoredList) {
+            if (uri.startsWith(iu)) {
+                return true;
+            }
+        }
+
+        return false ;
     }
 
     protected abstract boolean loginSuccess(HttpServletRequest request, HttpServletResponse response, Object handler) throws IOException;

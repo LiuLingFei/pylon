@@ -4,8 +4,11 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import com.google.common.base.Joiner;
-import com.google.common.collect.Lists;
 import com.yotouch.core.entity.query.Query;
+import com.yotouch.core.entity.query.ff.CountField;
+import com.yotouch.core.exception.DbSessionException;
+import com.yotouch.core.helper.PaginationHelper;
+import com.yotouch.core.model.EntityModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,9 +25,8 @@ import com.yotouch.core.store.db.DbStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheConfig;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 @Component
 @CacheConfig(cacheNames = "Entity")
@@ -72,7 +74,7 @@ public class DbSessionImpl implements DbSession {
 
         if (isNew) {
             if (this.loginUser != null) {
-                e.setValue("creatorUuid", this.loginUser.getUuid());
+                e.setValue("creatorId", this.loginUser.getUuid());
             }
             
             Calendar c = e.v("createdAt");
@@ -82,10 +84,19 @@ public class DbSessionImpl implements DbSession {
             if (e.v("status") == null) {
                 e.setValue("status", Consts.STATUS_NORMAL);
             }
-            uuid = this.dbStore.insert(me, ei.getFieldValueList());
+            
+            uuid = e.getUuid();
+            if (StringUtils.isEmpty(uuid)) {
+                uuid = this.dbStore.insert(me, ei.getFieldValueList());   
+            } else if (uuid.startsWith("-")) {
+                uuid = uuid.substring(1);
+                uuid = this.dbStore.insert(me, ei.getFieldValueList(), uuid);
+            } else {
+                throw new DbSessionException("Invalid UUID " + uuid + " for Entity " + e);
+            }
         } else {
             if (this.loginUser != null) {
-                e.setValue("updaterUuid", this.loginUser.getUuid());
+                e.setValue("updaterId", this.loginUser.getUuid());
             }
             e.setValue("updatedAt", new Date());
             // Do Update
@@ -172,6 +183,25 @@ public class DbSessionImpl implements DbSession {
     }
 
     @Override
+    public <M extends EntityModel> M save(M entityModel, String entityName) {
+        Entity entity = getEntityFromModel(entityModel, entityName);
+
+        return this.save(entity.fromModel(entityModel)).looksLike((Class<M>) entityModel.getClass());
+    }
+
+    @Override
+    public <M extends EntityModel> Entity getEntityFromModel(M entityModel, String entityName) {
+        Entity entity;
+        if (entityModel != null && !StringUtils.isEmpty(entityModel.getUuid()) && !entityModel.getUuid().startsWith("-")) {
+            entity = this.getEntity(entityName, entityModel.getUuid());
+        } else {
+            entity = this.newEntity(entityName);
+        }
+
+        return entity;
+    }
+
+    @Override
     public void deleteRawSql(MetaEntity me, String where, Object[] args) {
         this.dbStore.deleteRawSql(me, where, args);
     }
@@ -212,7 +242,13 @@ public class DbSessionImpl implements DbSession {
             return el.get(0);
         }
     }
-    
+
+    @Override
+    public <M extends EntityModel> M getEntity(String entityName, String uuid, Class<M> clazz) {
+        Entity entity = this.getEntity(entityName, uuid);
+        return entity.looksLike(clazz);
+    }
+
     @Override
     public List<Entity> queryRawSql(String entityName, String where, Object[] args) {
         MetaEntity me = entityMgr.getMetaEntity(entityName);
@@ -220,10 +256,56 @@ public class DbSessionImpl implements DbSession {
     }
 
     @Override
+    public PaginationHelper<Entity> queryRawSql(String entityName, String where, Object[] args, PaginationHelper<Entity> paginationHelper) {
+        CountField countField = new CountField();
+        Query query = new Query();
+        query.addField(countField);
+        query.rawSql(where, args);
+        Entity entity = queryOne(entityName, query);
+        int totalRow = entity.v(countField.getName()) == null ? 0 : entity.v(countField.getName());
+
+        paginationHelper.setTotalRows(totalRow);
+        int currentPage = paginationHelper.getCurrentPage();
+        int offset = (currentPage - 1) * paginationHelper.getItemPerPage();
+
+        paginationHelper.setItemList(queryRawSql(entityName, where + " LIMIT " + offset + ", " + paginationHelper.getItemPerPage(), args));
+
+        return paginationHelper;
+    }
+
+    @Override
+    public <M extends EntityModel> List<M> queryRawSql(String entityName, String where, Object[] args, Class<M> clazz) {
+        List<Entity> entityList = queryRawSql(entityName, where, args);
+
+        if (entityList != null && !entityList.isEmpty()) {
+            return entityList
+                    .stream()
+                    .map(entity -> entity.looksLike(clazz))
+                    .collect(Collectors.toList());
+        }
+
+        return null;
+    }
+
+    @Override
     public List<Entity> getAll(String entityName) {
         MetaEntity me = entityMgr.getMetaEntity(entityName);
         List<Entity> el = this.dbStore.querySql(me, "", null, new EntityRowMapper(this, me, isMrLazy()));
         return el;
+    }
+
+    @Override
+    public <M extends EntityModel> List<M> getAll(String string, Class<M> clazz) {
+        List<Entity> entityList = getAll(string);
+
+        if (entityList != null && !entityList.isEmpty()) {
+            return entityList
+                    .stream()
+                    .map(entity -> entity.looksLike(clazz))
+                    .collect(Collectors.toList());
+        }
+
+        return null;
     }
 
     @Override
@@ -242,13 +324,31 @@ public class DbSessionImpl implements DbSession {
     }
 
     @Override
+    public <M extends EntityModel> M queryOneRawSql(String entityName, String where, Object[] args, Class<M> clazz) {
+        Entity entity = queryOneRawSql(entityName, where, args);
+
+        if (entity != null) {
+            return entity.looksLike(clazz);
+        }
+
+        return null;
+    }
+
+    @Override
     public Entity queryOne(String entityName, Query q) {
+        List<Entity> el = this.query(entityName, q);
+
+        return el == null ? null : el.get(0);
+    }
+
+    @Override
+    public List<Entity> query(String entityName, Query q) {
         MetaEntity me = entityMgr.getMetaEntity(entityName);
-        List<Entity> el = this.dbStore.querySql(me, q.getFields(), q.getWhere(), q.getArgs(), new EntityRowMapper(this, me, isMrLazy()));
+        List<Entity> el = this.dbStore.query(me, q, new EntityRowMapper(this, me, isMrLazy()));
         if (el.isEmpty()) {
             return null;
         } else {
-            return el.get(0);
+            return el;
         }
     }
 
@@ -307,6 +407,17 @@ public class DbSessionImpl implements DbSession {
     @Override
     public Entity queryOneByField(String metaEntity, String fieldName, Object value) {
         return this.queryOneRawSql(metaEntity, fieldName + "= ?", new Object[]{ value });
+    }
+
+    @Override
+    public List<Entity> queryListByField(String metaEntity, String fieldName, Object value) {
+
+        return this.queryRawSql(
+                metaEntity, 
+                fieldName + "= ?", 
+                new Object[]{ value }
+        );
+
     }
 
 
